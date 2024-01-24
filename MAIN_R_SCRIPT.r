@@ -10,7 +10,7 @@ json_data <- fromJSON("/Users/david/MainDrive/RHUL/Y3Projects/2023/AET_Analysis_
 str(json_data)
 
 # Set the study filter variable
-study_filter <- "DPY323.*" # Adjust this regex to match the keys you're interested in
+study_filter <- "\\bDPY323.*" # Adjust this regex to match the keys you're interested in
 
 # Check if there are any keys that match the regular expression
 matching_keys <- grep(study_filter, unlist(lapply(json_data, names)), value = TRUE)
@@ -21,8 +21,8 @@ data <- map(json_data, ~ keep(.x, .p = str_detect(names(.x), regex(study_filter)
   compact()
 
 # If you need to save the filtered data back to a JSON file
-output_path <- "/path/to/your/filtered_json_file.json"
-write(toJSON(filtered_data, pretty = TRUE), output_path)
+output_path <- "/Users/david/MainDrive/RHUL/Y3Projects/2023/AET_Analysis_Y3_2324/AET_Analysis_Y3_2324/filtered_json_fileJAN24.json"
+write(toJSON(data, pretty = TRUE), output_path)
 
 calc_similarity <- function(delays, periods) {
   angles = delays / periods * 2 * pi
