@@ -1,0 +1,1 @@
+In JennyData, you should find the previous run of the study and its data, which you can amalgamate to this year's run. In fromCatmur, you will find a matlab script that could be use for the gorilla data for the AET, with some adaptation. in OpenData, you should find Sowden's own SPSS scripts and data, which you can also use to inform your own analyses.
