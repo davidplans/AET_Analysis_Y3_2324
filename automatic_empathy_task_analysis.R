@@ -1,3 +1,12 @@
+
+# A script to analyze data from the Automatic Empathy Task by Sowden et al. (2015)
+# https://doi.org/10.1371/journal.pone.0136425
+# https://osf.io/2j8xh/
+# https://osf.io/2j8xh/download
+
+# This script is designed to be used with the data from the RHUL Y3 group project with David Plans
+# but can be adapted for other datasets using the same task.
+
 # Load necessary libraries
 library(tidyverse)
 
