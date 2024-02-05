@@ -1,5 +1,5 @@
 ---
-title: "Phase Adjustment Task"
+title: "Phase Adjustment Task - JB_RS"
 date: today
 date-format: "DD MMMM, YYYY"
 format: html
@@ -39,6 +39,7 @@ set.seed(1234)
 study_filter <- "\\bDPY323.*" # Adjust this regex to match the keys you're interested in
 
 data <- rjson::fromJSON(file = "patdeployments-default-rtdb-murphyphdstudent1-exportFeb2.json")
+
 data <- purrr::map(data, ~ purrr::keep(.x, .p = stringr::str_detect(names(.x), regex(study_filter)))) %>%
   purrr::compact()
 
@@ -112,32 +113,33 @@ st_trials_needed <- 17
 #| include: false
 # Unnesting the Data
 
-data_clean <- list_flatten(data) %>%
-  tibble::enframe() %>%
-  dplyr::select(!name) %>%
-  tidyr::unnest_wider(value) %>%
-  dplyr::rename(bl = baselines,
+data_clean <- data %>%
+  list_flatten() %>%
+  enframe() %>%
+  select(!name) %>%
+  unnest_wider(value) %>%
+  rename(bl = baselines,
          st = syncroTraining) %>%
-  tidyr::unnest_longer(bl) %>%
-  tidyr::unnest_wider(bl, names_sep = "_") %>%
-  tidyr::unnest_longer(st) %>%
-  tidyr::unnest_wider(st, names_sep = "_") %>%
-  tidyr::drop_na(st_averagePeriods, st_currentDelays) %>%
-  dplyr::group_by(participantID) %>%
-  dplyr::mutate(st_trial = row_number()) %>%
-  dplyr::filter(st_trial > 2) %>%
-  dplyr::group_by(participantID) %>%
-  dplyr::mutate(st_trial = row_number())
+  unnest_longer(bl) %>%
+  unnest_wider(bl, names_sep = "_") %>%
+  unnest_longer(st) %>%
+  unnest_wider(st, names_sep = "_") %>%
+  drop_na(st_averagePeriods, st_currentDelays) %>%
+  group_by(participantID) %>%
+  mutate(st_trial = row_number()) %>%
+  filter(st_trial > 2) %>%
+  group_by(participantID) %>%
+  mutate(st_trial = row_number())
   
 
 ```
 
 ```{r}
 #| include: false
-## Define Quality filters
+## Define Quality Filters
 
 
-data_clean <- data_clean %>% dplyr::filter(lengths(st_averagePeriods) > 0 &
+data_clean <- data_clean %>% filter(lengths(st_averagePeriods) > 0 &
                                 lengths(st_currentDelays) > 0 &
                                 lengths(st_instantPeriods) > 4 &
                                 lengths(st_recordedHR) > 0 &
@@ -152,28 +154,29 @@ data_clean <- data_clean %>% dplyr::filter(lengths(st_averagePeriods) > 0 &
 
 
 data_clean <- data_clean %>% 
-  dplyr::group_by(participantID) %>%
-  dplyr::mutate(st_trial = row_number(),
+  group_by(participantID) %>%
+  mutate(st_trial = row_number(),
          st_trial_comp = max(st_trial),
          st_bodyPos = na_if(st_bodyPos, -1)) %>%
-  dplyr::filter(st_trial_comp >= st_trials_needed) %>%
-  dplyr::group_by(participantID) %>%
-  dplyr::slice(1:st_trials_needed) %>%
-  dplyr::rowwise() %>%
-  dplyr::mutate(st_last_delay = st_currentDelays[length(st_currentDelays)],
+  filter(st_trial_comp >= st_trials_needed) %>%
+  group_by(participantID) %>%
+  slice(1:st_trials_needed) %>%
+  rowwise() %>%
+  mutate(st_last_delay = st_currentDelays[length(st_currentDelays)],
          st_last_period = st_averagePeriods[length(st_averagePeriods)],
          st_mean_recorded_HR = mean(st_recordedHR),
          st_time_trials = sum(st_instantPeriods),
          st_periods_mean = mean(st_averagePeriods),
          st_engagement_trial = length(unique(st_currentDelays)),
          bl_ibi = list(60 / bl_instantBpms)) %>%
-  dplyr::group_by(participantID) %>%
+  group_by(participantID) %>%
   do( data.frame(.,sim_exc_trial = sapply(.$st_trial, function(i) calc_similarity(.$st_last_delay[!.$st_trial %in% i], .$st_last_period[!.$st_trial %in% i])))) %>%
-  dplyr::mutate(sim_overall = calc_similarity(st_last_delay, st_last_period),
+  mutate(sim_overall = calc_similarity(st_last_delay, st_last_period),
          sim_difference = sim_exc_trial - sim_overall,
          sim_diff_conf_corr = cor(st_confidence, sim_difference, method = "pearson"),
          angles = becca_argomenti(st_last_delay, st_last_period)) %>%
-  dplyr::mutate_if(is.numeric, ~round(., 3))
+  mutate_if(is.numeric, ~round(., 3)) %>%
+  ungroup()
 
 
 ```
@@ -183,10 +186,10 @@ data_clean <- data_clean %>%
 # Adding HR data
 
 hr <- data_clean %>%
-  dplyr::group_by(participantID) %>%
-  dplyr::select(participantID, bl_ibi) %>%
-  dplyr::filter(row_number() == 1) %>%
-  tibble::as_tibble()
+  group_by(participantID) %>%
+  select(participantID, bl_ibi) %>%
+  filter(row_number() == 1) %>%
+  as_tibble()
 
 
 hrv <- list()
@@ -211,20 +214,17 @@ pnn50 <- purrr::map(hrv, ~ pluck(.x, 3, 1, "pNN50")) %>%
 
 ```
 
-Davide, the following code produces a summary object with a range of statistics. We are slightly unsure of `delays_ms`, `mean_angle`, `min_angle`, `max_angel` or how to convert angles back into delays for each participant. Any help would be greatly welcomed here.
-
 ```{r}
 #| include: false
 # Creating a summary object
 
 summary <- data_clean %>%
-  dplyr::group_by(participantID) %>%
   summarise(similarity = calc_similarity(st_last_delay, st_last_period),
             confidence_mean = mean(st_confidence),
             confidence_sd = sd(st_confidence),
             confidence_median = median(st_confidence),
             count_bodyPos = length(unique(st_bodyPos)),
-            delays_sec = mean(Arg(calc_similarity_complex(st_last_delay, st_last_period))/(2*pi)),
+            delays_sec = mean(Arg(calc_similarity_complex(st_last_delay, st_last_period))/((2*pi)*st_last_period)),
             mean_angle = Arg(calc_similarity_complex(st_last_delay, st_last_period)),
             min_angle = min(angles),
             max_angle = max(angles),
@@ -237,9 +237,10 @@ summary <- data_clean %>%
             used_trials = st_trials_needed,
             task_date = st_date[st_trials_needed],
             mean_HR = mean(st_mean_recorded_HR),
-            sim_diff_conf_corr = sim_diff_conf_corr[st_trials_needed]) %>%
-  dplyr::mutate_if(is.numeric, ~round(., 3)) %>%
-  dplyr::mutate(hrv_sdnn = sdnn,
+            sim_diff_conf_corr = sim_diff_conf_corr[st_trials_needed],
+            .by = participantID) %>%
+  mutate_if(is.numeric, ~round(., 3)) %>%
+  mutate(hrv_sdnn = sdnn,
          hrv_rmssd = rmssd,
          hrv_pnn50 = pnn50)
 
@@ -479,7 +480,7 @@ summary$intero_bayes_3 <-  ifelse(summary$intero_bf_label_3 == "Unknown" &
 
 
 ## remove individuals with Unknown final label (uncomment to remove)
-# summary_bayes <- summary %>% dplyr::filter(intero_bayes_3 != "Unknown")
+# summary_bayes <- summary %>% filter(intero_bayes_3 != "Unknown")
 
 ## if not removing unknowns use this line
 
@@ -516,7 +517,7 @@ summary$intero_bayes_10 <-  ifelse(summary$intero_bf_label_10 == "Unknown" &
                                    summary$intero_bayes_10)
 
 ## remove individuals with Unknown final label (unvomment to remove)
-# summary_bayes_10 <- summary %>% dplyr::filter(intero_bayes_10 != "Unknown")
+# summary_bayes_10 <- summary %>% filter(intero_bayes_10 != "Unknown")
 
 ## if not removing unknowns use this line
 summary_bayes_10 <- summary
@@ -552,7 +553,7 @@ summary$intero_bayes_30 <-  ifelse(summary$intero_bf_label_30 == "Unknown" &
                                    summary$intero_bayes_30)
 
 ## remove individuals with Unknown final label (unvomment to remove)
-# summary_bayes_30 <- summary %>% dplyr::filter(intero_bayes_30 != "Unknown")
+# summary_bayes_30 <- summary %>% filter(intero_bayes_30 != "Unknown")
 
 ## if not removing unknowns use this line
 
@@ -608,7 +609,7 @@ At a BF threshold of \>3 **`r toString(T2df[2,2])`** participants were classifie
 
 ### Correlation between Similarity scores and heart rate variability
 
-sim_HRV <- summary_bayes_30 %>% dplyr::dplyr::select(similarity, mean_HR, hrv_sdnn, hrv_rmssd, hrv_pnn50)
+sim_HRV <- summary_bayes_30 %>% dplyr::select(similarity, mean_HR, hrv_sdnn, hrv_rmssd, hrv_pnn50)
 
 MVNres<-MVN::mvn(sim_HRV)
 
@@ -621,7 +622,7 @@ sim_HRV_corP <- cor_test(sim_HRV, vars = similarity, vars2=c("mean_HR","hrv_sdnn
 sim_HRV_cor <- bind_rows(sim_HRV_corP, sim_HRV_corS)
 
 sim_HRV_cor<- sim_HRV_cor %>%
-  dplyr::dplyr::select(-c(statistic, conf.low,conf.high)) %>% 
+  dplyr::select(-c(statistic, conf.low,conf.high)) %>% 
   arrange(desc(var2))
 
 names(sim_HRV_cor) <- c("Var. 1", "Var. 2", "r", "p-value", "Type")
@@ -635,8 +636,8 @@ sim_HRV_cor$`Var. 2` <- c("Mean Heart Rate", "Mean Heart Rate",
 
 ### Correlation in interoceptive participants
 int_HRV <- summary_bayes_30 %>%
-  dplyr::filter(intero_bayes_3 =="Interoceptive participants") %>%
-  dplyr::dplyr::select(similarity, mean_HR, hrv_sdnn, hrv_rmssd, hrv_pnn50)
+  filter(intero_bayes_3 =="Interoceptive participants") %>%
+  dplyr::select(similarity, mean_HR, hrv_sdnn, hrv_rmssd, hrv_pnn50)
 
 int_HRV_corS<-cor_test(int_HRV, vars = similarity, vars2=c("mean_HR","hrv_sdnn","hrv_rmssd","hrv_pnn50"), method = "spearman")
 
@@ -644,7 +645,7 @@ int_HRV_corP<-cor_test(int_HRV, vars = similarity, vars2=c("mean_HR","hrv_sdnn",
 
 int_HRV_cor<-bind_rows(int_HRV_corP, int_HRV_corS)
 
-int_HRV_cor<- int_HRV_cor %>% dplyr::dplyr::select(-c(statistic, conf.low,conf.high)) %>% arrange(desc(var2))
+int_HRV_cor<- int_HRV_cor %>% dplyr::select(-c(statistic, conf.low,conf.high)) %>% arrange(desc(var2))
 names(int_HRV_cor)<-c("Var. 1", "Var. 2", "r", "p-value", "Type")
 
 int_HRV_cor$`Var. 1`<-rep(c("similarity"))
@@ -656,8 +657,8 @@ int_HRV_cor$`Var. 2`<-c("Mean Heart Rate", "Mean Heart Rate",
 
 
 ### Correlation in Non-interoceptive participants
-non_HRV <- summary_bayes_30 %>% dplyr::filter(intero_bayes_3 =="Non interoceptive participants") %>%
-  dplyr::dplyr::select(similarity, mean_HR, hrv_sdnn, hrv_rmssd, hrv_pnn50)
+non_HRV <- summary_bayes_30 %>% filter(intero_bayes_3 =="Non interoceptive participants") %>%
+  dplyr::select(similarity, mean_HR, hrv_sdnn, hrv_rmssd, hrv_pnn50)
 
 non_HRV_corS <- cor_test(non_HRV, vars = similarity, vars2=c("mean_HR","hrv_sdnn","hrv_rmssd","hrv_pnn50"), method = "spearman")
 
@@ -665,7 +666,7 @@ non_HRV_corP<-cor_test(non_HRV, vars = similarity, vars2=c("mean_HR","hrv_sdnn",
 
 non_HRV_cor<-bind_rows(non_HRV_corP, non_HRV_corS)
 
-non_HRV_cor<- non_HRV_cor %>% dplyr::dplyr::select(-c(statistic, conf.low,conf.high)) %>% arrange(desc(var2))
+non_HRV_cor<- non_HRV_cor %>% dplyr::select(-c(statistic, conf.low,conf.high)) %>% arrange(desc(var2))
 names(non_HRV_cor)<-c("Var. 1", "Var. 2", "r", "p-value", "Type")
 
 non_HRV_cor$`Var. 1`<-rep(c("similarity"))
@@ -711,7 +712,7 @@ knitr::kable(non_HRV_cor, digits = c(2, 3))
 ```{r}
 #| include: false
 
-sim_engage <- summary_bayes_30 %>% dplyr::dplyr::select(similarity, mean_time_trials, mean_engagement_trials )
+sim_engage <- summary_bayes_30 %>% dplyr::select(similarity, mean_time_trials, mean_engagement_trials )
 
 MVNres <- MVN::mvn(sim_engage)
 
@@ -723,7 +724,7 @@ sim_engage_corP <-cor_test(sim_engage, vars = similarity, vars2=c("mean_time_tri
 
 sim_engage_cor <-bind_rows(sim_engage_corP, sim_engage_corS)
 
-sim_engage_cor <- sim_engage_cor %>% dplyr::dplyr::select(-c(statistic, conf.low, conf.high)) %>% arrange(desc(var2))
+sim_engage_cor <- sim_engage_cor %>% dplyr::select(-c(statistic, conf.low, conf.high)) %>% arrange(desc(var2))
 names(sim_engage_cor) <-c ("Var. 1", "Var. 2", "r", "p-value", "Type")
 
 sim_engage_cor$`Var. 1` <- rep(c("Similarity"))
@@ -732,8 +733,8 @@ sim_engage_cor$`Var. 2` <- c("Mean time taken on trials", "Mean time taken on tr
                            "Mean engagement trials", "Mean engagement trials")
 
 ## Correlation in interoceptive participants
-int_engage <- summary_bayes_30 %>% dplyr::filter(intero_bayes_3 =="Interoceptive participants") %>%
-  dplyr::dplyr::select(similarity, "mean_time_trials", "mean_engagement_trials")
+int_engage <- summary_bayes_30 %>% filter(intero_bayes_3 =="Interoceptive participants") %>%
+  dplyr::select(similarity, "mean_time_trials", "mean_engagement_trials")
 
 int_engage_corS <-cor_test(int_engage, vars = similarity, vars2=c("mean_time_trials", "mean_engagement_trials"), method = "spearman")
 
@@ -741,7 +742,7 @@ int_engage_corP <-cor_test(int_engage, vars = similarity, vars2=c("mean_time_tri
 
 int_engage_cor <- bind_rows(int_engage_corP, int_engage_corS)
 
-int_engage_cor <- int_engage_cor %>% dplyr::dplyr::select(-c(statistic, conf.low,conf.high)) %>% arrange(desc(var2))
+int_engage_cor <- int_engage_cor %>% dplyr::select(-c(statistic, conf.low,conf.high)) %>% arrange(desc(var2))
 names(int_engage_cor) <- c("Var. 1", "Var. 2", "r", "p-value", "Type")
 
 int_engage_cor$`Var. 1`<-rep(c("Similarity"))
@@ -751,8 +752,8 @@ int_engage_cor$`Var. 2`<-c("Mean time taken on trials", "Mean time taken on tria
 
 
 ### Correlation in Non-interoceptive participants
-non_engage <- summary_bayes_30 %>% dplyr::filter(intero_bayes_3 =="Non interoceptive participants") %>%
-  dplyr::dplyr::select(similarity,"mean_time_trials", "mean_engagement_trials")
+non_engage <- summary_bayes_30 %>% filter(intero_bayes_3 =="Non interoceptive participants") %>%
+  dplyr::select(similarity,"mean_time_trials", "mean_engagement_trials")
 
 non_engage_corS<-cor_test(non_engage, vars = similarity, vars2=c("mean_time_trials", "mean_engagement_trials"), method = "spearman")
 
@@ -760,7 +761,7 @@ non_engage_corP<-cor_test(non_engage, vars = similarity, vars2=c("mean_time_tria
 
 non_engage_cor<-bind_rows(non_engage_corP, non_engage_corS)
 
-non_engage_cor<- non_engage_cor %>% dplyr::dplyr::select(-c(statistic, conf.low,conf.high)) %>% arrange(desc(var2))
+non_engage_cor<- non_engage_cor %>% dplyr::select(-c(statistic, conf.low,conf.high)) %>% arrange(desc(var2))
 names(non_engage_cor)<-c("Var. 1", "Var. 2", "r", "p-value", "Type")
 
 non_engage_cor$`Var. 1`<-rep(c("Similarity"))
