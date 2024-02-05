@@ -38,6 +38,7 @@ set.seed(1234)
 # Set the study filter variable
 study_filter <- "\\bDPY323.*" # Adjust this regex to match the keys you're interested in
 
+#change this path to point to your data export file
 data <- rjson::fromJSON(file = "patdeployments-default-rtdb-murphyphdstudent1-exportFeb2.json")
 
 data <- purrr::map(data, ~ purrr::keep(.x, .p = stringr::str_detect(names(.x), regex(study_filter)))) %>%
